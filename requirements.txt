@@ -1,0 +1,13 @@
+# Updated requirements for Python 3.13.1
+fastapi>=0.105.0
+uvicorn>=0.24.0
+python-multipart>=0.0.6
+ultralytics>=8.0.196  # YOLOv8
+opencv-python>=4.8.1.78
+numpy>=1.26.2  # Updated for Python 3.13 compatibility
+websockets>=11.0.3
+pydantic>=2.4.2
+pillow>=10.1.0
+python-socketio>=5.10.0
+aiofiles>=23.2.1
+transformers>=4.34.1  # For Vision Transformers (optional)
