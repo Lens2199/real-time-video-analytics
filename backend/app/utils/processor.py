@@ -8,6 +8,7 @@ import numpy as np
 from typing import Dict, List, Any, Tuple, Optional
 from app.models.detector import ObjectDetector
 from app.models.tracker import ObjectTracker
+from app.agents.coordinator import CoordinatorAgent
 from app.config import RESULTS_DIR
 
 # Set up logging
@@ -17,16 +18,22 @@ class VideoProcessor:
     """
     Video processing class for AI analysis
     """
-    def __init__(self, detector: ObjectDetector, tracker: ObjectTracker = None):
+    def __init__(self, use_agents=True):
         """
         Initialize the video processor
         
         Args:
-            detector (ObjectDetector): Object detector instance
-            tracker (ObjectTracker, optional): Object tracker instance
+            use_agents (bool): Whether to use the multi-agent system
         """
-        self.detector = detector
-        self.tracker = tracker
+        self.use_agents = use_agents
+        
+        if use_agents:
+            # Initialize multi-agent system
+            self.coordinator = CoordinatorAgent("coordinator_1")
+        else:
+            # Initialize direct detector and tracker
+            self.detector = ObjectDetector()
+            self.tracker = ObjectTracker()
         
         # Dictionary to store processing status for each analysis
         self.processing_status = {}
@@ -36,6 +43,8 @@ class VideoProcessor:
         
         # Create results directory if it doesn't exist
         os.makedirs(RESULTS_DIR, exist_ok=True)
+        
+        logger.info(f"Video processor initialized with multi-agent system: {use_agents}")
     
     async def process_video(self, video_path: str, analysis_id: str, 
                       detection_interval: int = 15, save_output: bool = True,
@@ -93,6 +102,10 @@ class VideoProcessor:
             frame_count = 0
             processing_time = 0
             
+            # Reset coordinator statistics if using agents
+            if self.use_agents:
+                self.coordinator.reset_statistics()
+            
             # Process each frame
             while True:
                 # Read frame
@@ -104,38 +117,61 @@ class VideoProcessor:
                 
                 start_time = time.time()
                 
-                # Perform detection at regular intervals or on first frame
-                if frame_count % detection_interval == 0 or frame_count == 0:
-                    # Detect objects
-                    detections = self.detector.detect(frame)
+                # Process the frame
+                if self.use_agents:
+                    # Use multi-agent system
+                    result = self.coordinator.process(frame)
                     
-                    # Initialize or reinitialize the tracker
-                    if self.tracker and detections:
-                        self.tracker.reinitialize(frame, detections)
+                    # Extract detections and tracks
+                    detections = result.get("detections", [])
+                    tracks = result.get("tracks", [])
                     
-                    # Add frame number to detections
-                    for det in detections:
-                        det["frame_number"] = frame_count
+                    # Combine detections and tracks
+                    combined_objects = detections + tracks
                     
-                    # Add to all detections
-                    all_detections.extend(detections)
-                
-                # Otherwise, use tracker to update object positions
-                elif self.tracker:
-                    tracking_results = self.tracker.update(frame)
-                    
-                    # Add frame number to detections
-                    for det in tracking_results:
-                        det["frame_number"] = frame_count
+                    # Add frame number to objects
+                    for obj in combined_objects:
+                        obj["frame_number"] = frame_count
                     
                     # Add to all detections
-                    all_detections.extend(tracking_results)
-                
-                # Draw detections on the frame
-                if all_detections:
-                    # Filter detections for the current frame
-                    current_detections = [d for d in all_detections if d["frame_number"] == frame_count]
-                    frame = self.detector.draw_detections(frame, current_detections)
+                    all_detections.extend(combined_objects)
+                    
+                    # Draw objects on the frame (use the detection agent for this)
+                    if combined_objects:
+                        frame = self.coordinator.detection_agent.detector.draw_detections(frame, combined_objects)
+                else:
+                    # Use detector directly at intervals
+                    if frame_count % detection_interval == 0 or frame_count == 0:
+                        # Detect objects
+                        detections = self.detector.detect(frame)
+                        
+                        # Initialize or reinitialize the tracker
+                        if self.tracker and detections:
+                            self.tracker.reinitialize(frame, detections)
+                        
+                        # Add frame number to detections
+                        for det in detections:
+                            det["frame_number"] = frame_count
+                        
+                        # Add to all detections
+                        all_detections.extend(detections)
+                    
+                    # Otherwise, use tracker to update object positions
+                    elif self.tracker:
+                        tracking_results = self.tracker.update(frame)
+                        
+                        # Add frame number to detections
+                        for det in tracking_results:
+                            det["frame_number"] = frame_count
+                        
+                        # Add to all detections
+                        all_detections.extend(tracking_results)
+                    
+                    # Draw detections on the frame
+                    if all_detections:
+                        # Filter detections for the current frame
+                        current_detections = [d for d in all_detections if d["frame_number"] == frame_count]
+                        frame = self.detector.draw_detections(frame, current_detections)
                 
                 # Write frame to output video
                 if out is not None:
@@ -168,18 +204,26 @@ class VideoProcessor:
                 # Increment frame counter
                 frame_count += 1
             
-            # Calculate statistics
-            class_counts = {}
-            
-            for det in all_detections:
-                class_name = det["class_name"]
-                if class_name in class_counts:
-                    class_counts[class_name] += 1
-                else:
-                    class_counts[class_name] = 1
-            
-            # Calculate average processing time per frame
-            avg_processing_time = processing_time / frame_count if frame_count > 0 else 0
+            # Get statistics
+            if self.use_agents:
+                # Get statistics from coordinator
+                agent_stats = self.coordinator.get_statistics()
+                class_counts = agent_stats["detection_classes"]
+                total_detections = agent_stats["total_detections"]
+                avg_processing_time = agent_stats["avg_processing_time"]
+            else:
+                # Calculate statistics manually
+                class_counts = {}
+                
+                for det in all_detections:
+                    class_name = det["class_name"]
+                    if class_name in class_counts:
+                        class_counts[class_name] += 1
+                    else:
+                        class_counts[class_name] = 1
+                
+                total_detections = len(all_detections)
+                avg_processing_time = processing_time / frame_count if frame_count > 0 else 0
             
             # Prepare results
             results = {
@@ -192,7 +236,7 @@ class VideoProcessor:
                 "output_video": output_video_path,
                 "detections": all_detections,
                 "summary": {
-                    "total_detections": len(all_detections),
+                    "total_detections": total_detections,
                     "class_counts": class_counts
                 }
             }
