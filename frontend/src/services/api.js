@@ -38,4 +38,9 @@ export const videoAPI = {
     const response = await apiClient.get(`/results/${analysisId}`);
     return response.data;
   },
+  
+  // Get video URL
+  getVideoUrl: (analysisId) => {
+    return `${API_BASE_URL}/video/${analysisId}`;
+  }
 };
