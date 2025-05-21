@@ -5,8 +5,6 @@ import logging
 import uuid
 from app.utils.video import save_upload_file, get_video_info
 from app.utils.processor import VideoProcessor
-from app.models.detector import ObjectDetector
-from app.models.tracker import ObjectTracker
 from app.api.schemas import AnalysisResponse
 from app.main import sio
 from app.config import UPLOAD_DIR, RESULTS_DIR
@@ -17,12 +15,8 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
-# Create detector and tracker instances
-detector = ObjectDetector()
-tracker = ObjectTracker()
-
-# Create video processor
-processor = VideoProcessor(detector, tracker)
+# Create video processor with multi-agent system
+processor = VideoProcessor(use_agents=True)
 
 # Make upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -108,3 +102,26 @@ async def get_video(analysis_id: str):
         raise HTTPException(status_code=404, detail=f"Processed video not found: {analysis_id}")
     
     return FileResponse(video_path)
+
+@router.get("/system-info")
+async def get_system_info(
+    processor: VideoProcessor = Depends(get_processor)
+):
+    """
+    Get information about the video processing system
+    """
+    info = {
+        "system": "AI Video Analysis System",
+        "version": "1.0.0",
+        "features": {
+            "object_detection": True,
+            "object_tracking": True,
+            "multi_agent_system": processor.use_agents
+        },
+        "models": {
+            "detector": "YOLOv8n",
+            "tracker": "KCF"
+        }
+    }
+    
+    return info
