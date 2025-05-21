@@ -11,6 +11,10 @@ export const initializeSocket = () => {
     socket = io(SOCKET_URL, {
       transports: ['websocket'],
       autoConnect: true,
+      withCredentials: true,
+      extraHeaders: {
+        "Access-Control-Allow-Origin": "http://localhost:5173"
+      }
     });
     
     // Connection event handlers
