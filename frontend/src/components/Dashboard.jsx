@@ -2,16 +2,23 @@ import React, { useState, useEffect } from 'react';
 import { videoAPI } from '../services/api';
 import { getSocket } from '../utils/socket';
 import VideoInput from './VideoInput';
+import ObjectDisplay from './ObjectDisplay';
+import Charts from './Charts';
 
 const Dashboard = () => {
   const [analysisId, setAnalysisId] = useState(null);
   const [status, setStatus] = useState(null);
+  const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
+  const [error, setError] = useState(null);
   
   // Handle successful upload
   const handleUploadSuccess = (response) => {
     setAnalysisId(response.analysis_id);
     setStatus(response.status);
+    setProgress(0);
+    setResults(null);
+    setError(null);
     
     // Start polling for status updates
     if (response.analysis_id) {
@@ -24,6 +31,7 @@ const Dashboard = () => {
     try {
       const statusData = await videoAPI.getStatus(id);
       setStatus(statusData.status);
+      setProgress(statusData.progress || 0);
       
       // If processing is complete, get results
       if (statusData.status === 'completed') {
@@ -32,9 +40,12 @@ const Dashboard = () => {
       } else if (statusData.status === 'processing') {
         // Continue polling after a delay
         setTimeout(() => pollStatus(id), 2000);
+      } else if (statusData.status === 'error') {
+        setError(statusData.message || 'An error occurred during processing');
       }
     } catch (error) {
       console.error('Error polling status:', error);
+      setError('Failed to get processing status');
     }
   };
   
@@ -46,12 +57,18 @@ const Dashboard = () => {
     socket.on('analysis_update', (data) => {
       if (data.analysis_id === analysisId) {
         setStatus(data.status);
+        setProgress(data.progress || 0);
         
         // If processing is complete, get results
         if (data.status === 'completed') {
           videoAPI.getResults(data.analysis_id)
             .then(resultsData => setResults(resultsData))
-            .catch(error => console.error('Error getting results:', error));
+            .catch(error => {
+              console.error('Error getting results:', error);
+              setError('Failed to get analysis results');
+            });
+        } else if (data.status === 'error') {
+          setError(data.message || 'An error occurred during processing');
         }
       }
     });
@@ -66,45 +83,88 @@ const Dashboard = () => {
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">AI Video Analysis Dashboard</h1>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
           <VideoInput onUploadSuccess={handleUploadSuccess} />
           
-          {status && (
+          {analysisId && (
             <div className="card mb-6">
               <h2 className="text-xl font-bold mb-4">Analysis Status</h2>
               <div className="mb-4">
-                <span className="font-medium">Analysis ID:</span> {analysisId}
+                <span className="font-medium">Analysis ID:</span>{' '}
+                <span className="font-mono text-sm">{analysisId}</span>
               </div>
               <div className="mb-4">
                 <span className="font-medium">Status:</span>{' '}
                 <span className={`inline-block px-2 py-1 rounded ${
                   status === 'completed' ? 'bg-green-100 text-green-800' : 
                   status === 'processing' ? 'bg-blue-100 text-blue-800' : 
+                  status === 'error' ? 'bg-red-100 text-red-800' :
                   'bg-yellow-100 text-yellow-800'
                 }`}>
                   {status}
                 </span>
               </div>
               {status === 'processing' && (
-                <div className="w-full bg-gray-200 rounded-full h-2.5">
-                  <div className="bg-blue-600 h-2.5 rounded-full w-1/2"></div>
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-medium">Progress: {progress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                    <div 
+                      className="bg-blue-600 h-2.5 rounded-full" 
+                      style={{ width: `${progress}%` }}
+                    ></div>
+                  </div>
+                </div>
+              )}
+              {error && (
+                <div className="mt-4 p-3 bg-red-50 text-red-700 rounded-md">
+                  <p className="font-medium">Error:</p>
+                  <p>{error}</p>
                 </div>
               )}
             </div>
           )}
         </div>
         
-        <div>
+        <div className="lg:col-span-2">
           {results && (
-            <div className="card">
-              <h2 className="text-xl font-bold mb-4">Analysis Results</h2>
-              <p className="text-gray-600 italic mb-4">
-                Note: This is a placeholder. We'll add real visualizations in the next phase!
-              </p>
-              <pre className="bg-gray-100 p-4 rounded-md overflow-auto max-h-96">
-                {JSON.stringify(results, null, 2)}
-              </pre>
+            <>
+              <ObjectDisplay results={results} />
+              <div className="mt-6">
+                <Charts results={results} />
+              </div>
+            </>
+          )}
+          
+          {!results && status === 'processing' && (
+            <div className="card flex items-center justify-center p-12">
+              <div className="text-center">
+                <svg className="animate-spin h-10 w-10 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <p className="text-gray-600">Processing your video...</p>
+                <p className="text-sm text-gray-500 mt-2">This may take a few minutes depending on the video size.</p>
+              </div>
+            </div>
+          )}
+          
+          {!results && !status && (
+            <div className="card bg-blue-50 border border-blue-200">
+              <div className="p-6">
+                <h3 className="text-lg font-semibold text-blue-800 mb-2">How It Works</h3>
+                <p className="text-blue-700 mb-4">
+                  This system uses AI to analyze videos in real-time:
+                </p>
+                <ol className="list-decimal list-inside space-y-2 text-blue-700">
+                  <li>Upload a video file using the panel on the left</li>
+                  <li>Our AI processes the video using YOLOv8 object detection</li>
+                  <li>Multiple AI agents collaborate to track and analyze objects</li>
+                  <li>View detailed results and visualizations when processing completes</li>
+                </ol>
+              </div>
             </div>
           )}
         </div>
@@ -114,3 +174,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
