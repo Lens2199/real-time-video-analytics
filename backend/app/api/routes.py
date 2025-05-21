@@ -1,10 +1,15 @@
-from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends
+from fastapi.responses import JSONResponse, FileResponse
 import os
 import logging
 import uuid
-from app.utils.video import save_upload_file
+from app.utils.video import save_upload_file, get_video_info
+from app.utils.processor import VideoProcessor
+from app.models.detector import ObjectDetector
+from app.models.tracker import ObjectTracker
 from app.api.schemas import AnalysisResponse
+from app.main import sio
+from app.config import UPLOAD_DIR, RESULTS_DIR
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -12,14 +17,28 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
-# Temporary storage for uploaded videos
-UPLOAD_DIR = "uploads"
+# Create detector and tracker instances
+detector = ObjectDetector()
+tracker = ObjectTracker()
+
+# Create video processor
+processor = VideoProcessor(detector, tracker)
+
+# Make upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Make results directory if it doesn't exist
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+# Helper function to get video processor instance
+def get_processor():
+    return processor
 
 @router.post("/upload", response_model=AnalysisResponse)
 async def upload_video(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...)
+    file: UploadFile = File(...),
+    processor: VideoProcessor = Depends(get_processor)
 ):
     """
     Upload a video file for processing
@@ -32,8 +51,8 @@ async def upload_video(
         file_path = os.path.join(UPLOAD_DIR, f"{analysis_id}_{file.filename}")
         await save_upload_file(file, file_path)
         
-        # Start background processing (will implement later)
-        # background_tasks.add_task(process_video, file_path, analysis_id)
+        # Start background processing
+        background_tasks.add_task(processor.process_video, file_path, analysis_id, socketio=sio)
         
         logger.info(f"Video uploaded: {file_path}")
         
@@ -49,13 +68,43 @@ async def upload_video(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/status/{analysis_id}")
-async def get_status(analysis_id: str):
+async def get_status(
+    analysis_id: str,
+    processor: VideoProcessor = Depends(get_processor)
+):
     """
     Get the status of a video analysis
     """
-    # This is a placeholder - we'll implement proper status tracking later
-    return {
-        "analysis_id": analysis_id,
-        "status": "processing",
-        "progress": 0
-    }
+    status = processor.get_status(analysis_id)
+    
+    if status["status"] == "not_found":
+        raise HTTPException(status_code=404, detail=f"Analysis not found: {analysis_id}")
+    
+    return status
+
+@router.get("/results/{analysis_id}")
+async def get_results(
+    analysis_id: str,
+    processor: VideoProcessor = Depends(get_processor)
+):
+    """
+    Get the results of a video analysis
+    """
+    results = processor.get_results(analysis_id)
+    
+    if not results:
+        raise HTTPException(status_code=404, detail=f"Results not found: {analysis_id}")
+    
+    return results
+
+@router.get("/video/{analysis_id}")
+async def get_video(analysis_id: str):
+    """
+    Get the processed video
+    """
+    video_path = os.path.join(RESULTS_DIR, f"{analysis_id}_output.mp4")
+    
+    if not os.path.exists(video_path):
+        raise HTTPException(status_code=404, detail=f"Processed video not found: {analysis_id}")
+    
+    return FileResponse(video_path)
