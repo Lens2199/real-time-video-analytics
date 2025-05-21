@@ -8,10 +8,18 @@ logging.basicConfig(level=logging.INFO,
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# GitHub Pages URL for your repository
+GITHUB_PAGES_URL = "https://lens2199.github.io/real-time-video-analytics"
+
 # Create Socket.IO server with explicit CORS configuration
 sio = socketio.AsyncServer(
     async_mode='asgi', 
-    cors_allowed_origins=['http://localhost:5173', 'http://127.0.0.1:5173', '*']
+    cors_allowed_origins=[
+        'http://localhost:5173', 
+        'http://127.0.0.1:5173', 
+        GITHUB_PAGES_URL,
+        '*'
+    ]
 )
 socket_app = socketio.ASGIApp(sio)
 
@@ -21,7 +29,12 @@ app = FastAPI(title="AI Video Analysis System")
 # Add CORS middleware with explicit allowed origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+    allow_origins=[
+        "http://localhost:5173", 
+        "http://127.0.0.1:5173", 
+        GITHUB_PAGES_URL,
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
