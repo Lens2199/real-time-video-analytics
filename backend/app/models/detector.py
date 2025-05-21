@@ -2,6 +2,7 @@ import logging
 import os
 import cv2
 import numpy as np
+import torch
 from ultralytics import YOLO
 from typing import List, Dict, Any, Tuple
 
@@ -22,9 +23,21 @@ class ObjectDetector:
         """
         self.confidence_threshold = confidence_threshold
         
-        # Load the model
+        # Load the model with safe globals
         try:
             logger.info(f"Loading YOLOv8 model from {model_path}")
+            
+            # Add safe globals for YOLOv8 model loading
+            torch.serialization.add_safe_globals([
+                'ultralytics.nn.tasks.DetectionModel',
+                'ultralytics.nn.modules.conv.Conv',
+                'ultralytics.nn.modules.block.C2f',
+                'ultralytics.nn.modules.head.Detect',
+                'ultralytics.models.yolo.detect.DetectionPredictor',
+                'ultralytics.models.yolo.detect.DetectionValidator',
+                'ultralytics.models.yolo.detect.DetectionTrainer'
+            ])
+            
             self.model = YOLO(model_path)
             logger.info("Model loaded successfully")
         except Exception as e:
