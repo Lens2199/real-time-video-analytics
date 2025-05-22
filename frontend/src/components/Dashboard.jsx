@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { videoAPI } from '../services/api';
-import { getSocket } from '../utils/socket';
 import VideoInput from './VideoInput';
 import ObjectDisplay from './ObjectDisplay';
 import Charts from './Charts';
@@ -11,7 +10,6 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
-  const [socketConnected, setSocketConnected] = useState(false);
   const [apiConnected, setApiConnected] = useState(false);
   
   // Test API connection on component mount
@@ -44,7 +42,7 @@ const Dashboard = () => {
     }
   };
   
-  // Poll for status updates (fallback when WebSocket fails)
+  // Poll for status updates
   const pollStatus = async (id) => {
     try {
       const statusData = await videoAPI.getStatus(id);
@@ -56,10 +54,8 @@ const Dashboard = () => {
         const resultsData = await videoAPI.getResults(id);
         setResults(resultsData);
       } else if (statusData.status === 'processing') {
-        // Continue polling after a delay (only if socket is not connected)
-        if (!socketConnected) {
-          setTimeout(() => pollStatus(id), 3000);
-        }
+        // Continue polling after a delay
+        setTimeout(() => pollStatus(id), 4000); // Poll every 4 seconds
       } else if (statusData.status === 'error') {
         setError(statusData.message || 'An error occurred during processing');
       }
@@ -69,95 +65,31 @@ const Dashboard = () => {
     }
   };
   
-  // Set up socket connection for real-time updates (with graceful fallback)
-  useEffect(() => {
-    let socket;
-    
-    try {
-      socket = getSocket();
-      
-      if (socket) {
-        // Check if socket connects successfully
-        socket.on('connect', () => {
-          console.log('Socket connected successfully');
-          setSocketConnected(true);
-        });
-        
-        socket.on('disconnect', () => {
-          console.log('Socket disconnected');
-          setSocketConnected(false);
-        });
-        
-        socket.on('connect_error', (error) => {
-          console.warn('Socket connection failed, using polling fallback');
-          setSocketConnected(false);
-        });
-        
-        // Listen for analysis status updates (only if socket works)
-        socket.on('analysis_update', (data) => {
-          if (data.analysis_id === analysisId) {
-            setStatus(data.status);
-            setProgress(data.progress || 0);
-            
-            // If processing is complete, get results
-            if (data.status === 'completed') {
-              videoAPI.getResults(data.analysis_id)
-                .then(resultsData => setResults(resultsData))
-                .catch(error => {
-                  console.error('Error getting results:', error);
-                  setError(`Failed to get analysis results: ${error.message}`);
-                });
-            } else if (data.status === 'error') {
-              setError(data.message || 'An error occurred during processing');
-            }
-          }
-        });
-      }
-      
-    } catch (error) {
-      console.warn('Socket.IO initialization failed, using polling fallback');
-      setSocketConnected(false);
-    }
-    
-    // Cleanup on component unmount
-    return () => {
-      if (socket) {
-        socket.off('analysis_update');
-        socket.off('connect');
-        socket.off('disconnect');
-        socket.off('connect_error');
-      }
-    };
-  }, [analysisId]);
-  
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">AI Video Analysis Dashboard</h1>
       
       {/* Connection Status */}
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="mb-4">
         <div className={`p-3 rounded-md ${apiConnected ? 'bg-green-50 text-green-800' : 'bg-red-50 text-red-800'}`}>
-          <span className="font-medium">API Status:</span> {apiConnected ? 'Connected' : 'Disconnected'}
-        </div>
-        <div className={`p-3 rounded-md ${socketConnected ? 'bg-green-50 text-green-800' : 'bg-yellow-50 text-yellow-800'}`}>
-          <span className="font-medium">Real-time Updates:</span> {socketConnected ? 'Connected' : 'Using Polling'}
+          <span className="font-medium">Backend Status:</span> {apiConnected ? 'Connected ✓' : 'Checking connection...'}
         </div>
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
-          <VideoInput onUploadSuccess={handleUploadSuccess} />
+          <VideoInput onUploadSuccess={handleUploadSuccess} disabled={!apiConnected} />
           
           {analysisId && (
             <div className="card mb-6">
               <h2 className="text-xl font-bold mb-4">Analysis Status</h2>
               <div className="mb-4">
                 <span className="font-medium">Analysis ID:</span>{' '}
-                <span className="font-mono text-sm break-all">{analysisId}</span>
+                <span className="font-mono text-xs break-all">{analysisId}</span>
               </div>
               <div className="mb-4">
                 <span className="font-medium">Status:</span>{' '}
-                <span className={`inline-block px-2 py-1 rounded ${
+                <span className={`inline-block px-2 py-1 rounded text-sm ${
                   status === 'completed' ? 'bg-green-100 text-green-800' : 
                   status === 'processing' ? 'bg-blue-100 text-blue-800' : 
                   status === 'error' ? 'bg-red-100 text-red-800' :
@@ -171,12 +103,13 @@ const Dashboard = () => {
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-medium">Progress: {progress}%</span>
                   </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
+                  <div className="w-full bg-gray-200 rounded-full h-3 mb-4">
                     <div 
-                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                      style={{ width: `${progress}%` }}
+                      className="bg-blue-600 h-3 rounded-full transition-all duration-300" 
+                      style={{ width: `${Math.max(progress, 10)}%` }}
                     ></div>
                   </div>
+                  <p className="text-sm text-gray-600">Processing video... Please wait.</p>
                 </div>
               )}
               {error && (
@@ -202,12 +135,13 @@ const Dashboard = () => {
           {!results && status === 'processing' && (
             <div className="card flex items-center justify-center p-12">
               <div className="text-center">
-                <svg className="animate-spin h-10 w-10 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <svg className="animate-spin h-12 w-12 text-blue-600 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                 </svg>
-                <p className="text-gray-600">Processing your video...</p>
-                <p className="text-sm text-gray-500 mt-2">This may take a few minutes depending on the video size.</p>
+                <p className="text-gray-800 font-medium">Processing your video...</p>
+                <p className="text-sm text-gray-600 mt-2">This may take a few minutes depending on the video size.</p>
+                <p className="text-xs text-gray-500 mt-2">Status updates every 4 seconds</p>
               </div>
             </div>
           )}
@@ -217,7 +151,7 @@ const Dashboard = () => {
               <div className="p-6">
                 <h3 className="text-lg font-semibold text-blue-800 mb-2">How It Works</h3>
                 <p className="text-blue-700 mb-4">
-                  This system uses AI to analyze videos in real-time:
+                  This system uses AI to analyze videos:
                 </p>
                 <ol className="list-decimal list-inside space-y-2 text-blue-700">
                   <li>Upload a video file using the panel on the left</li>
@@ -225,6 +159,11 @@ const Dashboard = () => {
                   <li>Multiple AI agents collaborate to track and analyze objects</li>
                   <li>View detailed results and visualizations when processing completes</li>
                 </ol>
+                <div className="mt-4 p-3 bg-blue-100 rounded-md">
+                  <p className="text-sm text-blue-800">
+                    <strong>Note:</strong> First upload may take longer as the backend initializes.
+                  </p>
+                </div>
               </div>
             </div>
           )}
