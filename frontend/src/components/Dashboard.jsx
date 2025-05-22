@@ -11,6 +11,7 @@ const Dashboard = () => {
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
   const [error, setError] = useState(null);
+  const [socketConnected, setSocketConnected] = useState(false);
   
   // Handle successful upload
   const handleUploadSuccess = (response) => {
@@ -26,7 +27,7 @@ const Dashboard = () => {
     }
   };
   
-  // Poll for status updates
+  // Poll for status updates (fallback when WebSocket fails)
   const pollStatus = async (id) => {
     try {
       const statusData = await videoAPI.getStatus(id);
@@ -38,8 +39,10 @@ const Dashboard = () => {
         const resultsData = await videoAPI.getResults(id);
         setResults(resultsData);
       } else if (statusData.status === 'processing') {
-        // Continue polling after a delay
-        setTimeout(() => pollStatus(id), 2000);
+        // Continue polling after a delay (only if socket is not connected)
+        if (!socketConnected) {
+          setTimeout(() => pollStatus(id), 3000);
+        }
       } else if (statusData.status === 'error') {
         setError(statusData.message || 'An error occurred during processing');
       }
@@ -49,39 +52,74 @@ const Dashboard = () => {
     }
   };
   
-  // Set up socket connection for real-time updates
+  // Set up socket connection for real-time updates (with graceful fallback)
   useEffect(() => {
-    const socket = getSocket();
+    let socket;
     
-    // Listen for analysis status updates
-    socket.on('analysis_update', (data) => {
-      if (data.analysis_id === analysisId) {
-        setStatus(data.status);
-        setProgress(data.progress || 0);
-        
-        // If processing is complete, get results
-        if (data.status === 'completed') {
-          videoAPI.getResults(data.analysis_id)
-            .then(resultsData => setResults(resultsData))
-            .catch(error => {
-              console.error('Error getting results:', error);
-              setError('Failed to get analysis results');
-            });
-        } else if (data.status === 'error') {
-          setError(data.message || 'An error occurred during processing');
+    try {
+      socket = getSocket();
+      
+      // Check if socket connects successfully
+      socket.on('connect', () => {
+        console.log('Socket connected successfully');
+        setSocketConnected(true);
+      });
+      
+      socket.on('disconnect', () => {
+        console.log('Socket disconnected');
+        setSocketConnected(false);
+      });
+      
+      socket.on('connect_error', (error) => {
+        console.warn('Socket connection failed, using polling fallback');
+        setSocketConnected(false);
+      });
+      
+      // Listen for analysis status updates (only if socket works)
+      socket.on('analysis_update', (data) => {
+        if (data.analysis_id === analysisId) {
+          setStatus(data.status);
+          setProgress(data.progress || 0);
+          
+          // If processing is complete, get results
+          if (data.status === 'completed') {
+            videoAPI.getResults(data.analysis_id)
+              .then(resultsData => setResults(resultsData))
+              .catch(error => {
+                console.error('Error getting results:', error);
+                setError('Failed to get analysis results');
+              });
+          } else if (data.status === 'error') {
+            setError(data.message || 'An error occurred during processing');
+          }
         }
-      }
-    });
+      });
+      
+    } catch (error) {
+      console.warn('Socket.IO initialization failed, using polling fallback');
+      setSocketConnected(false);
+    }
     
     // Cleanup on component unmount
     return () => {
-      socket.off('analysis_update');
+      if (socket) {
+        socket.off('analysis_update');
+        socket.off('connect');
+        socket.off('disconnect');
+        socket.off('connect_error');
+      }
     };
   }, [analysisId]);
   
   return (
     <div className="container mx-auto px-4 py-8">
       <h1 className="text-3xl font-bold mb-6">AI Video Analysis Dashboard</h1>
+      
+      {!socketConnected && (
+        <div className="mb-4 p-3 bg-yellow-50 text-yellow-800 rounded-md">
+          Real-time updates unavailable. Using polling for status updates.
+        </div>
+      )}
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
@@ -112,7 +150,7 @@ const Dashboard = () => {
                   </div>
                   <div className="w-full bg-gray-200 rounded-full h-2.5 mb-4">
                     <div 
-                      className="bg-blue-600 h-2.5 rounded-full" 
+                      className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
                       style={{ width: `${progress}%` }}
                     ></div>
                   </div>
@@ -174,4 +212,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
