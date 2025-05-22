@@ -1,7 +1,9 @@
 import { io } from 'socket.io-client';
 
-// Socket.io server URL - change this in production
-const SOCKET_URL = 'http://localhost:8000';
+// Socket.io server URL - automatically switches between development and production
+const SOCKET_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://video-analysis-api-vt2g.onrender.com'  // Your deployed backend
+  : 'http://localhost:8000';
 
 // Create socket instance
 let socket;
@@ -13,7 +15,9 @@ export const initializeSocket = () => {
       autoConnect: true,
       withCredentials: true,
       extraHeaders: {
-        "Access-Control-Allow-Origin": "http://localhost:5173"
+        "Access-Control-Allow-Origin": process.env.NODE_ENV === 'production' 
+          ? "https://lens2199.github.io" 
+          : "http://localhost:5173"
       }
     });
     
