@@ -23,23 +23,44 @@ class ObjectDetector:
         """
         self.confidence_threshold = confidence_threshold
         
-        # Load the model with safe globals
+        # Load the model with version-compatible safe loading
         try:
             logger.info(f"Loading YOLOv8 model from {model_path}")
             
-            # Add safe globals for YOLOv8 model loading
-            torch.serialization.add_safe_globals([
-                'ultralytics.nn.tasks.DetectionModel',
-                'ultralytics.nn.modules.conv.Conv',
-                'ultralytics.nn.modules.block.C2f',
-                'ultralytics.nn.modules.head.Detect',
-                'ultralytics.models.yolo.detect.DetectionPredictor',
-                'ultralytics.models.yolo.detect.DetectionValidator',
-                'ultralytics.models.yolo.detect.DetectionTrainer'
-            ])
+            # Set environment variable to allow unsafe loading for YOLOv8 compatibility
+            os.environ['TORCH_SERIALIZATION_SAFE_GLOBALS'] = '1'
             
-            self.model = YOLO(model_path)
+            # Try different methods based on PyTorch version
+            try:
+                # For newer PyTorch versions (2.1+)
+                if hasattr(torch.serialization, 'add_safe_globals'):
+                    torch.serialization.add_safe_globals([
+                        'ultralytics.nn.tasks.DetectionModel',
+                        'ultralytics.nn.modules.conv.Conv',
+                        'ultralytics.nn.modules.block.C2f',
+                        'ultralytics.nn.modules.head.Detect'
+                    ])
+                    self.model = YOLO(model_path)
+                # For older PyTorch versions, use context manager if available
+                elif hasattr(torch.serialization, 'safe_globals'):
+                    with torch.serialization.safe_globals([
+                        'ultralytics.nn.tasks.DetectionModel',
+                        'ultralytics.nn.modules.conv.Conv', 
+                        'ultralytics.nn.modules.block.C2f',
+                        'ultralytics.nn.modules.head.Detect'
+                    ]):
+                        self.model = YOLO(model_path)
+                else:
+                    # Fallback: Load normally (older PyTorch versions)
+                    self.model = YOLO(model_path)
+                    
+            except Exception as torch_error:
+                logger.warning(f"Safe loading failed: {torch_error}, trying fallback method")
+                # Ultimate fallback
+                self.model = YOLO(model_path)
+                
             logger.info("Model loaded successfully")
+            
         except Exception as e:
             logger.error(f"Error loading model: {str(e)}")
             raise e
