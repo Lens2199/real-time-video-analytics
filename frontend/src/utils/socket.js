@@ -11,27 +11,39 @@ let socket;
 export const initializeSocket = () => {
   if (!socket) {
     socket = io(SOCKET_URL, {
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'], // Add polling as fallback
       autoConnect: true,
-      withCredentials: true,
-      extraHeaders: {
-        "Access-Control-Allow-Origin": process.env.NODE_ENV === 'production' 
-          ? "https://lens2199.github.io" 
-          : "http://localhost:5173"
-      }
+      withCredentials: false, // Change to false for cross-origin
+      timeout: 20000,
+      forceNew: true,
+      reconnection: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 1000,
     });
     
     // Connection event handlers
     socket.on('connect', () => {
-      console.log('Socket connected');
+      console.log('Socket connected successfully');
     });
     
-    socket.on('disconnect', () => {
-      console.log('Socket disconnected');
+    socket.on('disconnect', (reason) => {
+      console.log('Socket disconnected:', reason);
     });
     
     socket.on('connect_error', (error) => {
-      console.error('Socket connection error:', error);
+      console.warn('Socket connection error:', error.message);
+      // Don't retry immediately if it's a persistent error
+      if (error.type === 'TransportError') {
+        console.log('Falling back to polling transport...');
+      }
+    });
+
+    socket.on('reconnect', (attemptNumber) => {
+      console.log('Socket reconnected after', attemptNumber, 'attempts');
+    });
+
+    socket.on('reconnect_error', (error) => {
+      console.warn('Socket reconnection failed:', error.message);
     });
   }
   
