@@ -12,7 +12,7 @@ if __name__ == "__main__":
     print(f"Starting server on host 0.0.0.0 and port {port}")
     
     uvicorn.run(
-        "app.main:application",  # Changed to use the combined ASGI app
+        "app.main:app",  # Back to the main FastAPI app
         host="0.0.0.0",
         port=port,
         reload=False,
