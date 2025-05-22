@@ -9,7 +9,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger(__name__)
 
 # GitHub Pages URL for your repository
-GITHUB_PAGES_URL = "https://lens2199.github.io/real-time-video-analytics"
+GITHUB_PAGES_URL = "https://lens2199.github.io"
 
 # Create Socket.IO server with explicit CORS configuration
 sio = socketio.AsyncServer(
@@ -18,8 +18,11 @@ sio = socketio.AsyncServer(
         'http://localhost:5173', 
         'http://127.0.0.1:5173', 
         GITHUB_PAGES_URL,
+        'https://lens2199.github.io/real-time-video-analytics',
         '*'
-    ]
+    ],
+    logger=True,
+    engineio_logger=True
 )
 socket_app = socketio.ASGIApp(sio)
 
@@ -33,9 +36,10 @@ app.add_middleware(
         "http://localhost:5173", 
         "http://127.0.0.1:5173", 
         GITHUB_PAGES_URL,
+        "https://lens2199.github.io/real-time-video-analytics",
         "*"
     ],
-    allow_credentials=True,
+    allow_credentials=False,  # Set to False for cross-origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -56,6 +60,11 @@ async def disconnect(sid):
 @app.get("/")
 async def root():
     return {"message": "Welcome to AI Video Analysis API"}
+
+# Health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "message": "API is running"}
 
 # Import and include API routes
 from app.api.routes import router as api_router
