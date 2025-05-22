@@ -21,10 +21,9 @@ sio = socketio.AsyncServer(
         'https://lens2199.github.io/real-time-video-analytics',
         '*'
     ],
-    logger=True,
-    engineio_logger=True
+    logger=False,  # Disable socket.io logging to reduce noise
+    engineio_logger=False
 )
-socket_app = socketio.ASGIApp(sio)
 
 # Create FastAPI app
 app = FastAPI(title="AI Video Analysis System")
@@ -44,22 +43,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount Socket.IO
-app.mount('/socket.io', socket_app)
-
 # Socket.IO events
 @sio.event
-async def connect(sid, environ):
+async def connect(sid, environ, auth):
     logger.info(f"Client connected: {sid}")
+    await sio.emit('connection_status', {'status': 'connected'}, room=sid)
 
 @sio.event
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
 
+@sio.event
+async def ping(sid, data):
+    await sio.emit('pong', {'message': 'Server is alive'}, room=sid)
+
 # Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "Welcome to AI Video Analysis API"}
+    return {"message": "Welcome to AI Video Analysis API", "status": "running"}
 
 # Health check endpoint
 @app.get("/health")
@@ -70,13 +71,18 @@ async def health_check():
 from app.api.routes import router as api_router
 app.include_router(api_router, prefix="/api")
 
+# Create the combined ASGI app
+socket_app = socketio.ASGIApp(sio, app)
+
 # Startup event
 @app.on_event("startup")
 async def startup_event():
     logger.info("Starting up the server...")
-    # You can add initialization code here (like loading AI models)
 
 # Shutdown event
 @app.on_event("shutdown")
 async def shutdown_event():
     logger.info("Shutting down the server...")
+
+# Export the socket_app as the main application
+application = socket_app
