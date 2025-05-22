@@ -1,7 +1,9 @@
 import axios from 'axios';
 
-// API base URL - change this in production
-const API_BASE_URL = 'http://localhost:8000/api';
+// API base URL - automatically switches between development and production
+const API_BASE_URL = process.env.NODE_ENV === 'production' 
+  ? 'https://video-analysis-api-vt2g.onrender.com/api'  // Your deployed backend
+  : 'http://localhost:8000/api';
 
 // Create axios instance
 const apiClient = axios.create({
@@ -41,6 +43,9 @@ export const videoAPI = {
   
   // Get video URL
   getVideoUrl: (analysisId) => {
-    return `${API_BASE_URL}/video/${analysisId}`;
+    const baseUrl = process.env.NODE_ENV === 'production' 
+      ? 'https://video-analysis-api-vt2g.onrender.com/api'
+      : 'http://localhost:8000/api';
+    return `${baseUrl}/video/${analysisId}`;
   }
 };
