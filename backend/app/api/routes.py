@@ -15,21 +15,27 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
-# Try to create video processor with multi-agent system, fallback to simple processor
+# Try lightweight processor first (best for free tier), then fall back to others
 processor = None
 try:
-    from app.utils.processor import VideoProcessor
-    processor = VideoProcessor(use_agents=True)
-    logger.info("Initialized multi-agent video processor")
+    from app.utils.lightweight_processor import LightweightVideoProcessor
+    processor = LightweightVideoProcessor()
+    logger.info("Initialized lightweight video processor (optimized for free tier)")
 except Exception as e:
-    logger.warning(f"Failed to initialize multi-agent processor: {e}")
+    logger.warning(f"Failed to initialize lightweight processor: {e}")
     try:
         from app.utils.simple_processor import SimpleVideoProcessor
         processor = SimpleVideoProcessor()
         logger.info("Initialized simple video processor as fallback")
     except Exception as e2:
-        logger.error(f"Failed to initialize fallback processor: {e2}")
-        processor = None
+        logger.warning(f"Failed to initialize simple processor: {e2}")
+        try:
+            from app.utils.processor import VideoProcessor
+            processor = VideoProcessor(use_agents=False)  # Disable agents for free tier
+            logger.info("Initialized basic video processor")
+        except Exception as e3:
+            logger.error(f"Failed to initialize any processor: {e3}")
+            processor = None
 
 # Make upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
