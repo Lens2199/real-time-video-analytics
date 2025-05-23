@@ -1,12 +1,12 @@
 from fastapi import APIRouter, UploadFile, File, BackgroundTasks, HTTPException, Depends
 from fastapi.responses import JSONResponse, FileResponse
+from fastapi.middleware.cors import CORSMiddleware
 import os
 import logging
 import uuid
 from app.utils.video import save_upload_file, get_video_info
 from app.utils.processor import VideoProcessor
 from app.api.schemas import AnalysisResponse
-from app.main import sio
 from app.config import UPLOAD_DIR, RESULTS_DIR
 
 # Set up logging
@@ -28,6 +28,18 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 def get_processor():
     return processor
 
+@router.options("/upload")
+async def upload_options():
+    """Handle CORS preflight for upload endpoint"""
+    return JSONResponse(
+        content={"message": "OK"},
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 @router.post("/upload", response_model=AnalysisResponse)
 async def upload_video(
     background_tasks: BackgroundTasks,
@@ -45,17 +57,27 @@ async def upload_video(
         file_path = os.path.join(UPLOAD_DIR, f"{analysis_id}_{file.filename}")
         await save_upload_file(file, file_path)
         
-        # Start background processing
-        background_tasks.add_task(processor.process_video, file_path, analysis_id, socketio=sio)
+        # Start background processing (simplified without socket.io for now)
+        background_tasks.add_task(processor.process_video, file_path, analysis_id)
         
         logger.info(f"Video uploaded: {file_path}")
         
-        return {
+        response_data = {
             "analysis_id": analysis_id,
             "status": "processing",
             "message": "Video uploaded successfully and processing started",
             "file_name": file.filename
         }
+        
+        # Return with CORS headers
+        return JSONResponse(
+            content=response_data,
+            headers={
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "POST, OPTIONS",
+                "Access-Control-Allow-Headers": "*",
+            }
+        )
     
     except Exception as e:
         logger.error(f"Error uploading video: {str(e)}")
@@ -74,7 +96,14 @@ async def get_status(
     if status["status"] == "not_found":
         raise HTTPException(status_code=404, detail=f"Analysis not found: {analysis_id}")
     
-    return status
+    return JSONResponse(
+        content=status,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @router.get("/results/{analysis_id}")
 async def get_results(
@@ -89,7 +118,14 @@ async def get_results(
     if not results:
         raise HTTPException(status_code=404, detail=f"Results not found: {analysis_id}")
     
-    return results
+    return JSONResponse(
+        content=results,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @router.get("/video/{analysis_id}")
 async def get_video(analysis_id: str):
@@ -101,7 +137,14 @@ async def get_video(analysis_id: str):
     if not os.path.exists(video_path):
         raise HTTPException(status_code=404, detail=f"Processed video not found: {analysis_id}")
     
-    return FileResponse(video_path)
+    return FileResponse(
+        video_path,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
 
 @router.get("/system-info")
 async def get_system_info(
@@ -124,4 +167,11 @@ async def get_system_info(
         }
     }
     
-    return info
+    return JSONResponse(
+        content=info,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
