@@ -5,7 +5,6 @@ import os
 import logging
 import uuid
 from app.utils.video import save_upload_file, get_video_info
-from app.utils.processor import VideoProcessor
 from app.api.schemas import AnalysisResponse
 from app.config import UPLOAD_DIR, RESULTS_DIR
 
@@ -15,8 +14,21 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter()
 
-# Create video processor with multi-agent system
-processor = VideoProcessor(use_agents=True)
+# Try to create video processor with multi-agent system, fallback to simple processor
+processor = None
+try:
+    from app.utils.processor import VideoProcessor
+    processor = VideoProcessor(use_agents=True)
+    logger.info("Initialized multi-agent video processor")
+except Exception as e:
+    logger.warning(f"Failed to initialize multi-agent processor: {e}")
+    try:
+        from app.utils.simple_processor import SimpleVideoProcessor
+        processor = SimpleVideoProcessor()
+        logger.info("Initialized simple video processor as fallback")
+    except Exception as e2:
+        logger.error(f"Failed to initialize fallback processor: {e2}")
+        processor = None
 
 # Make upload directory if it doesn't exist
 os.makedirs(UPLOAD_DIR, exist_ok=True)
@@ -26,6 +38,8 @@ os.makedirs(RESULTS_DIR, exist_ok=True)
 
 # Helper function to get video processor instance
 def get_processor():
+    if processor is None:
+        raise HTTPException(status_code=500, detail="Video processor not available")
     return processor
 
 @router.options("/upload")
@@ -44,7 +58,7 @@ async def upload_options():
 async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
-    processor: VideoProcessor = Depends(get_processor)
+    processor = Depends(get_processor)
 ):
     """
     Upload a video file for processing
@@ -86,7 +100,7 @@ async def upload_video(
 @router.get("/status/{analysis_id}")
 async def get_status(
     analysis_id: str,
-    processor: VideoProcessor = Depends(get_processor)
+    processor = Depends(get_processor)
 ):
     """
     Get the status of a video analysis
@@ -108,7 +122,7 @@ async def get_status(
 @router.get("/results/{analysis_id}")
 async def get_results(
     analysis_id: str,
-    processor: VideoProcessor = Depends(get_processor)
+    processor = Depends(get_processor)
 ):
     """
     Get the results of a video analysis
@@ -147,23 +161,34 @@ async def get_video(analysis_id: str):
     )
 
 @router.get("/system-info")
-async def get_system_info(
-    processor: VideoProcessor = Depends(get_processor)
-):
+async def get_system_info():
     """
     Get information about the video processing system
     """
+    # Determine which processor is being used
+    processor_type = "none"
+    features = {"object_detection": False, "object_tracking": False, "multi_agent_system": False}
+    
+    if processor:
+        if hasattr(processor, 'use_agents'):
+            processor_type = "multi-agent" if processor.use_agents else "basic"
+            features = {
+                "object_detection": True,
+                "object_tracking": processor.use_agents,
+                "multi_agent_system": processor.use_agents
+            }
+        else:
+            processor_type = "simple"
+            features = {"object_detection": True, "object_tracking": False, "multi_agent_system": False}
+    
     info = {
         "system": "AI Video Analysis System",
         "version": "1.0.0",
-        "features": {
-            "object_detection": True,
-            "object_tracking": True,
-            "multi_agent_system": processor.use_agents
-        },
+        "processor_type": processor_type,
+        "features": features,
         "models": {
             "detector": "YOLOv8n",
-            "tracker": "KCF"
+            "tracker": "KCF" if processor_type == "multi-agent" else "none"
         }
     }
     
