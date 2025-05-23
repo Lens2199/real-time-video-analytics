@@ -1,15 +1,11 @@
 # Backend requirements
 fastapi==0.105.0
-uvicorn[standard]==0.24.0
+uvicorn==0.24.0
 python-multipart==0.0.6
-ultralytics==8.0.196
-opencv-python-headless==4.8.1.78
+ultralytics==8.0.196  # YOLOv8
+opencv-python-headless==4.8.1.78  # Headless version for servers
 numpy==1.26.0
-websockets==11.0.3
 pydantic==2.4.2
 pillow==10.1.0
-python-socketio==5.10.0
 aiofiles==23.2.1
-transformers==4.34.1
-torch>=1.13.0,<2.1.0
-torchvision>=0.14.0,<0.16.0
+transformers==4.34.1  # For Vision Transformers (optional)
