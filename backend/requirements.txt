@@ -2,10 +2,20 @@
 fastapi==0.105.0
 uvicorn==0.24.0
 python-multipart==0.0.6
+
+# AI/ML Dependencies with specific compatible versions
 ultralytics==8.0.196  # YOLOv8
+torch==2.0.1  # Specific PyTorch version for compatibility
+torchvision==0.15.2  # Compatible with torch 2.0.1
 opencv-python-headless==4.8.1.78  # Headless version for servers
-numpy==1.26.0
+numpy==1.24.3  # Compatible with torch 2.0.1
+
+# Other dependencies
 pydantic==2.4.2
 pillow==10.1.0
 aiofiles==23.2.1
 transformers==4.34.1  # For Vision Transformers (optional)
+
+# Additional PyTorch ecosystem
+scipy==1.10.1  # Required by some ML libraries
+matplotlib==3.7.2  # For plotting (if needed)
