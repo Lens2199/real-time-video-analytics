@@ -47,17 +47,15 @@ class VideoProcessor:
         logger.info(f"Video processor initialized with multi-agent system: {use_agents}")
     
     async def process_video(self, video_path: str, analysis_id: str, 
-                      detection_interval: int = 15, save_output: bool = True,
-                      socketio=None):
+                      detection_interval: int = 15, save_output: bool = True):
         """
-        Process a video file for object detection and tracking
+        Process a video file for object detection and tracking (simplified without socket.io)
         
         Args:
             video_path (str): Path to the input video file
             analysis_id (str): Unique ID for this analysis
             detection_interval (int): Interval between detections (in frames)
             save_output (bool): Whether to save the output video
-            socketio: SocketIO instance for real-time updates
         
         Returns:
             Dict[str, Any]: Analysis results
@@ -190,16 +188,6 @@ class VideoProcessor:
                         "progress": progress,
                         "message": f"Processing frame {frame_count}/{total_frames}"
                     }
-                    
-                    # Send real-time update via Socket.IO
-                    if socketio:
-                        await socketio.emit('analysis_update', {
-                            'analysis_id': analysis_id,
-                            'status': 'processing',
-                            'progress': progress,
-                            'current_frame': frame_count,
-                            'total_frames': total_frames
-                        })
                 
                 # Increment frame counter
                 frame_count += 1
@@ -262,15 +250,6 @@ class VideoProcessor:
                 "results_file": results_file_path
             }
             
-            # Send final update via Socket.IO
-            if socketio:
-                await socketio.emit('analysis_update', {
-                    'analysis_id': analysis_id,
-                    'status': 'completed',
-                    'progress': 100,
-                    'results_file': results_file_path
-                })
-            
             # Store detection results
             self.detection_results[analysis_id] = results
             
@@ -290,14 +269,6 @@ class VideoProcessor:
                 "progress": 0,
                 "message": str(e)
             }
-            
-            # Send error via Socket.IO
-            if socketio:
-                await socketio.emit('analysis_update', {
-                    'analysis_id': analysis_id,
-                    'status': 'error',
-                    'message': str(e)
-                })
             
             logger.error(f"Error processing video: {str(e)}")
             raise e
